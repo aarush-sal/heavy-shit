@@ -91,6 +91,9 @@ main{display:flex;flex-direction:column;min-width:0}
 .val input{width:100%;max-width:150px;min-width:0;background:none;border:0;text-align:right;font-family:var(--disp);font-weight:700;font-size:64px;line-height:1;font-variant-numeric:tabular-nums;padding:0}
 .val input:focus{outline:none;color:var(--g)}
 .val span{color:var(--mute);font-size:16px;min-width:34px}
+.unit{display:flex;flex-direction:column;gap:4px;flex:none}
+.unit button{width:46px;height:30px;border-radius:8px;background:var(--surface2);color:var(--mute);font-size:14px;font-weight:600;text-align:center}
+.unit button[aria-pressed="true"]{background:var(--g);color:var(--on)}
 .log{margin-top:14px;width:100%;height:68px;border-radius:16px;background:var(--g);color:var(--on);font-family:var(--disp);font-weight:700;font-size:30px;letter-spacing:.04em;text-align:center}
 .log:active{filter:brightness(.9)}
 .done{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
@@ -159,7 +162,9 @@ var DEFAULT_EX={
   calves:['Standing calf raise','Seated calf raise','Leg press calf raise','Dumbbell calf raise','Single-leg calf raise'],
   abs:['Ab crunch machine','Cable crunch','Hanging knee raise','Plank','Crunch','Leg raise','Russian twist']
 };
-var REST=120,STEP=2.5;
+var REST=120;
+function step(){return S.draft.u==='lb'?5:2.5}
+function wlab(w,u){return fmt(w)+(u==='lb'?' lb':'')}
 var I={
   minus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg>',
   plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
@@ -179,7 +184,7 @@ function mergeCfg(c){
 mergeCfg(lsGet('il2.cfg',null));
 var sessions=lsGet('il.sessions',{});
 var ui=lsGet('il2.ui',{});
-var S={view:'home',g:ui.g||'push',open:ui.open||{},m:null,ex:null,draft:{w:20,r:8},adding:null,sync:'wait'};
+var S={view:'home',g:ui.g||'push',open:ui.open||{},m:null,ex:null,draft:{w:20,r:8,u:'kg'},adding:null,sync:'wait'};
 var col=null,pending=0,chain=Promise.resolve();
 
 function pad(n){return n<10?'0'+n:''+n}
@@ -236,7 +241,7 @@ function loadDraft(){
   var today=setsOn(todayKey()).filter(function(s){return s.ex===ex});
   var s=today[today.length-1];
   if(!s){var l=lastSession(ex);if(l)s=l.sets[l.sets.length-1]}
-  S.draft=s?{w:s.w,r:s.r}:{w:20,r:8};
+  S.draft=s?{w:s.w,r:s.r,u:s.u||'kg'}:{w:20,r:8,u:'kg'};
 }
 
 /* ---------- render ---------- */
@@ -266,14 +271,14 @@ function renderLog(){
   var t=todayKey(),mine=[];
   setsOn(t).forEach(function(s,i){if(s.ex===S.ex)mine.push({s:s,i:i})});
   var last=lastSession(S.ex),ls=last?last.sets[last.sets.length-1]:null;
-  var hint=ls?('Last time '+fmt(ls.w)+' kg × '+ls.r):'First time. Set your starting weight.';
+  var hint=ls?('Last time '+fmt(ls.w)+' '+(ls.u||'kg')+' × '+ls.r):'First time. Set your starting weight.';
   $('#view').innerHTML=
    '<div class="top"><button class="back" data-act="back">'+I.left+esc(MNAME[S.m])+'</button></div>'+
    '<h1 class="lg-name">'+esc(S.ex)+'</h1><p class="lg-hint">'+esc(hint)+'</p>'+
-   '<div class="stepper"><button data-act="wm" aria-label="Less weight">'+I.minus+'</button><div class="val"><input id="w" inputmode="decimal" value="'+fmt(S.draft.w)+'" aria-label="Weight in kg"><span>kg</span></div><button data-act="wp" aria-label="More weight">'+I.plus+'</button></div>'+
+   '<div class="stepper"><button data-act="wm" aria-label="Less weight">'+I.minus+'</button><div class="val"><input id="w" inputmode="decimal" value="'+fmt(S.draft.w)+'" aria-label="Weight"><div class="unit" role="group" aria-label="Weight unit"><button data-act="unit" data-u="kg" aria-pressed="'+(S.draft.u!=='lb')+'">kg</button><button data-act="unit" data-u="lb" aria-pressed="'+(S.draft.u==='lb')+'">lb</button></div></div><button data-act="wp" aria-label="More weight">'+I.plus+'</button></div>'+
    '<div class="stepper"><button data-act="rm" aria-label="Fewer reps">'+I.minus+'</button><div class="val"><input id="r" inputmode="numeric" value="'+S.draft.r+'" aria-label="Reps"><span>reps</span></div><button data-act="rp" aria-label="More reps">'+I.plus+'</button></div>'+
    '<button class="log" data-act="log">Log set</button>'+
-   (mine.length?'<div class="done">'+mine.map(function(o){return '<button class="chipset" data-act="del" data-i="'+o.i+'" aria-label="Remove set '+fmt(o.s.w)+' by '+o.s.r+'">'+fmt(o.s.w)+' × '+o.s.r+I.x+'</button>'}).join('')+'</div>':'')+
+   (mine.length?'<div class="done">'+mine.map(function(o){return '<button class="chipset" data-act="del" data-i="'+o.i+'" aria-label="Remove set '+wlab(o.s.w,o.s.u)+' by '+o.s.r+'">'+wlab(o.s.w,o.s.u)+' × '+o.s.r+I.x+'</button>'}).join('')+'</div>':'')+
    '<button class="link" data-act="rmex">Remove from list</button>';
 }
 function renderHist(){
@@ -284,7 +289,7 @@ function renderHist(){
     var order=[],map={};
     setsOn(d).forEach(function(s){if(!map[s.ex]){map[s.ex]={g:s.g,sets:[]};order.push(s.ex)}map[s.ex].sets.push(s)});
     h+='<section class="hist-day"><h3>'+esc(new Date(d+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}))+'</h3>'+
-      order.map(function(ex){return '<div class="hx"><i class="d-'+map[ex].g+'"></i><b>'+esc(ex)+'</b><span>'+map[ex].sets.map(function(s){return fmt(s.w)+'×'+s.r}).join('  ')+'</span></div>'}).join('')+'</section>';
+      order.map(function(ex){return '<div class="hx"><i class="d-'+map[ex].g+'"></i><b>'+esc(ex)+'</b><span>'+map[ex].sets.map(function(s){return wlab(s.w,s.u).replace(' ','')+'×'+s.r}).join('  ')+'</span></div>'}).join('')+'</section>';
   });
   h+='<div class="bk"><button data-act="backup">Back up data</button><button data-act="restore">Restore from backup</button><input type="file" id="rf" accept=".json,application/json" hidden></div>';
   $('#view').innerHTML=h;
@@ -369,13 +374,14 @@ var acts={
   open:function(b){S.ex=b.dataset.ex;S.m=b.dataset.m;S.adding=null;loadDraft();go('log')},
   back:function(){S.adding=null;go('home')},
   hist:function(){go('hist')},
-  wm:function(){nudge('w',-STEP)},wp:function(){nudge('w',STEP)},
+  wm:function(){nudge('w',-step())},wp:function(){nudge('w',step())},
+  unit:function(b){readDraft();S.draft.u=b.dataset.u;renderLog()},
   rm:function(){nudge('r',-1)},rp:function(){nudge('r',1)},
   log:function(){
     readDraft();audioReady();wake();
     var t=todayKey();
     if(!sessions[t])sessions[t]={date:t,sets:[]};
-    sessions[t].sets.push({g:S.g,m:S.m,ex:S.ex,w:S.draft.w,r:S.draft.r,t:Date.now()});
+    sessions[t].sets.push({g:S.g,m:S.m,ex:S.ex,w:S.draft.w,r:S.draft.r,u:S.draft.u,t:Date.now()});
     saveDay(t);
     try{if(navigator.vibrate)navigator.vibrate(25)}catch(e){}
     startTimer(REST);
