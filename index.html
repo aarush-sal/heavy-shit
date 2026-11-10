@@ -98,7 +98,19 @@ main{display:flex;flex-direction:column;min-width:0}
 .log:active{filter:brightness(.9)}
 .done{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
 .chipset{height:44px;padding:0 8px 0 14px;border-radius:22px;background:var(--surface);display:flex;align-items:center;gap:6px;font-family:var(--disp);font-weight:600;font-size:22px;font-variant-numeric:tabular-nums}
-.chipset svg{width:18px;height:18px;color:var(--mute)}
+.chipset svg{width:18px;height:18px;color:var(--mute);flex:none}
+.done .chipset{max-width:100%;text-align:left}
+.chipset.drop{height:auto;min-height:44px;padding-top:6px;padding-bottom:6px;font-size:20px;line-height:1.2}
+.chipset small{font-family:var(--body);font-weight:600;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--g)}
+.chipset.pend{border:1.5px dashed var(--g);font-size:20px}
+.pendl{margin-top:16px;color:var(--mute);font-size:13px}
+.pendl+.done{margin-top:8px}
+.dropsw{display:flex;justify-content:space-between;align-items:center;width:100%;min-height:52px;padding:0 4px;margin-top:4px;font-size:17px}
+.sw{display:block;width:50px;height:30px;border-radius:15px;background:var(--surface2);position:relative;flex:none}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:var(--mute)}
+.dropsw[aria-pressed="true"] .sw{background:var(--g)}
+.dropsw[aria-pressed="true"] .sw::after{left:23px;background:var(--on)}
+.log.fin{background:var(--surface2);color:var(--g);margin-top:12px;font-size:26px}
 .link{margin-top:28px;color:var(--mute);font-size:14px;text-decoration:underline;text-underline-offset:3px;min-height:44px}
 
 /* history */
@@ -164,6 +176,8 @@ var DEFAULT_EX={
 };
 var REST=120;
 function step(){return S.draft.u==='lb'?5:2.5}
+function segTxt(g){return wlab(g.w,g.u)+' × '+g.r}
+function setTxt(s){return s.drops?s.drops.map(segTxt).join(' → '):segTxt(s)}
 function wlab(w,u){return fmt(w)+(u==='lb'?' lb':'')}
 var I={
   minus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg>',
@@ -184,7 +198,7 @@ function mergeCfg(c){
 mergeCfg(lsGet('il2.cfg',null));
 var sessions=lsGet('il.sessions',{});
 var ui=lsGet('il2.ui',{});
-var S={view:'home',g:ui.g||'push',open:ui.open||{},m:null,ex:null,draft:{w:20,r:8,u:'kg'},adding:null,sync:'wait'};
+var S={view:'home',g:ui.g||'push',open:ui.open||{},m:null,ex:null,draft:{w:20,r:8,u:'kg'},adding:null,sync:'wait',drop:{on:false,ex:null,segs:[]}};
 var col=null,pending=0,chain=Promise.resolve();
 
 function pad(n){return n<10?'0'+n:''+n}
@@ -277,8 +291,10 @@ function renderLog(){
    '<h1 class="lg-name">'+esc(S.ex)+'</h1><p class="lg-hint">'+esc(hint)+'</p>'+
    '<div class="stepper"><button data-act="wm" aria-label="Less weight">'+I.minus+'</button><div class="val"><input id="w" inputmode="decimal" value="'+fmt(S.draft.w)+'" aria-label="Weight"><div class="unit" role="group" aria-label="Weight unit"><button data-act="unit" data-u="kg" aria-pressed="'+(S.draft.u!=='lb')+'">kg</button><button data-act="unit" data-u="lb" aria-pressed="'+(S.draft.u==='lb')+'">lb</button></div></div><button data-act="wp" aria-label="More weight">'+I.plus+'</button></div>'+
    '<div class="stepper"><button data-act="rm" aria-label="Fewer reps">'+I.minus+'</button><div class="val"><input id="r" inputmode="numeric" value="'+S.draft.r+'" aria-label="Reps"><span>reps</span></div><button data-act="rp" aria-label="More reps">'+I.plus+'</button></div>'+
-   '<button class="log" data-act="log">Log set</button>'+
-   (mine.length?'<div class="done">'+mine.map(function(o){return '<button class="chipset" data-act="del" data-i="'+o.i+'" aria-label="Remove set '+wlab(o.s.w,o.s.u)+' by '+o.s.r+'">'+wlab(o.s.w,o.s.u)+' × '+o.s.r+I.x+'</button>'}).join('')+'</div>':'')+
+   '<button class="dropsw" data-act="dropt" aria-pressed="'+S.drop.on+'"><span>Drop set</span><i class="sw"></i></button>'+
+   '<button class="log" data-act="'+(S.drop.on?'adddrop':'log')+'">'+(S.drop.on?'Add drop':'Log set')+'</button>'+
+   (S.drop.on&&S.drop.segs.length?'<div class="pendl">Drop set so far</div><div class="done pend">'+S.drop.segs.map(function(g,i){return '<button class="chipset pend" data-act="rmseg" data-i="'+i+'" aria-label="Remove drop '+segTxt(g)+'">'+esc(segTxt(g))+I.x+'</button>'}).join('')+'</div><button class="log fin" data-act="finish">Finish drop set</button>':'')+
+   (mine.length?'<div class="done">'+mine.map(function(o){return '<button class="chipset'+(o.s.drops?' drop':'')+'" data-act="del" data-i="'+o.i+'" aria-label="Remove set '+esc(setTxt(o.s))+'"><span>'+(o.s.drops?'<small>Drop</small> ':'')+esc(setTxt(o.s))+'</span>'+I.x+'</button>'}).join('')+'</div>':'')+
    '<button class="link" data-act="rmex">Remove from list</button>';
 }
 function renderHist(){
@@ -289,7 +305,7 @@ function renderHist(){
     var order=[],map={};
     setsOn(d).forEach(function(s){if(!map[s.ex]){map[s.ex]={g:s.g,sets:[]};order.push(s.ex)}map[s.ex].sets.push(s)});
     h+='<section class="hist-day"><h3>'+esc(new Date(d+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}))+'</h3>'+
-      order.map(function(ex){return '<div class="hx"><i class="d-'+map[ex].g+'"></i><b>'+esc(ex)+'</b><span>'+map[ex].sets.map(function(s){return wlab(s.w,s.u).replace(' ','')+'×'+s.r}).join('  ')+'</span></div>'}).join('')+'</section>';
+      order.map(function(ex){return '<div class="hx"><i class="d-'+map[ex].g+'"></i><b>'+esc(ex)+'</b><span>'+map[ex].sets.map(function(s){return s.drops?('Drop '+s.drops.map(function(g){return wlab(g.w,g.u).replace(' ','')+'×'+g.r}).join('→')):(wlab(s.w,s.u).replace(' ','')+'×'+s.r)}).join('  ')+'</span></div>'}).join('')+'</section>';
   });
   h+='<div class="bk"><button data-act="backup">Back up data</button><button data-act="restore">Restore from backup</button><input type="file" id="rf" accept=".json,application/json" hidden></div>';
   $('#view').innerHTML=h;
@@ -371,12 +387,32 @@ function nudge(k,d){
 var acts={
   grp:function(b){S.g=b.dataset.grp;S.adding=null;saveUi();render()},
   mus:function(b){var m=b.dataset.m;S.open[S.g]=(S.open[S.g]===m)?null:m;S.adding=null;saveUi();renderHome()},
-  open:function(b){S.ex=b.dataset.ex;S.m=b.dataset.m;S.adding=null;loadDraft();go('log')},
+  open:function(b){S.ex=b.dataset.ex;S.m=b.dataset.m;S.adding=null;if(S.drop.ex!==S.ex)S.drop={on:false,ex:S.ex,segs:[]};loadDraft();go('log')},
   back:function(){S.adding=null;go('home')},
   hist:function(){go('hist')},
   wm:function(){nudge('w',-step())},wp:function(){nudge('w',step())},
   unit:function(b){readDraft();S.draft.u=b.dataset.u;renderLog()},
   rm:function(){nudge('r',-1)},rp:function(){nudge('r',1)},
+  dropt:function(){readDraft();S.drop.ex=S.ex;S.drop.on=!S.drop.on;renderLog()},
+  adddrop:function(){
+    readDraft();audioReady();wake();
+    S.drop.ex=S.ex;S.drop.segs.push({w:S.draft.w,r:S.draft.r,u:S.draft.u});
+    try{if(navigator.vibrate)navigator.vibrate(25)}catch(e){}
+    renderLog();
+  },
+  rmseg:function(b){S.drop.segs.splice(parseInt(b.dataset.i,10),1);renderLog()},
+  finish:function(){
+    var segs=S.drop.segs;if(!segs.length)return;
+    audioReady();wake();
+    var t=todayKey();
+    if(!sessions[t])sessions[t]={date:t,sets:[]};
+    sessions[t].sets.push({g:S.g,m:S.m,ex:S.ex,w:segs[0].w,r:segs[0].r,u:segs[0].u,drops:segs.map(function(g){return {w:g.w,r:g.r,u:g.u}}),t:Date.now()});
+    saveDay(t);
+    S.drop={on:false,ex:S.ex,segs:[]};
+    try{if(navigator.vibrate)navigator.vibrate(25)}catch(e){}
+    startTimer(REST);
+    renderLog();
+  },
   log:function(){
     readDraft();audioReady();wake();
     var t=todayKey();
